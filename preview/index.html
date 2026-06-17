@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>行智 iOS 界面预览</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    :root {
+      --green: #70df78;
+      --blue: #42a6ff;
+      --orange: #ff7e34;
+      --panel: rgba(8, 34, 52, 0.74);
+      --line: rgba(255, 255, 255, 0.16);
+      --text-soft: rgba(255, 255, 255, 0.66);
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      color: white;
+      background:
+        radial-gradient(circle at 18% 16%, rgba(255, 225, 176, 0.42), transparent 28%),
+        radial-gradient(circle at 82% 8%, rgba(86, 172, 224, 0.42), transparent 30%),
+        linear-gradient(135deg, #d7e3e8 0%, #7ca9c3 34%, #2d566d 58%, #07131d 100%);
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      left: -4vw;
+      right: -4vw;
+      bottom: 0;
+      height: 56vh;
+      pointer-events: none;
+      clip-path: polygon(0 66%, 14% 46%, 26% 58%, 38% 34%, 54% 63%, 69% 28%, 83% 56%, 100% 38%, 100% 100%, 0 100%);
+      background: linear-gradient(#e7edf0 0%, #6c7f83 36%, #111f22 100%);
+      opacity: 0.78;
+    }
+
+    body::after {
+      height: 38vh;
+      clip-path: polygon(0 72%, 19% 48%, 36% 70%, 52% 43%, 68% 76%, 81% 55%, 100% 68%, 100% 100%, 0 100%);
+      background: linear-gradient(#425f52 0%, #10211c 48%, #06100f 100%);
+      opacity: 0.92;
+    }
+
+    .topography {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.42;
+      background:
+        repeating-radial-gradient(ellipse at 54% 4%, transparent 0 37px, rgba(255,255,255,.22) 38px 39px, transparent 40px 76px),
+        repeating-radial-gradient(ellipse at 7% 0%, transparent 0 28px, rgba(255,255,255,.18) 29px 30px, transparent 31px 62px);
+    }
+
+    .network {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        radial-gradient(circle at 75% 12%, white 0 3px, transparent 4px),
+        radial-gradient(circle at 84% 20%, white 0 3px, transparent 4px),
+        radial-gradient(circle at 93% 9%, white 0 3px, transparent 4px),
+        radial-gradient(circle at 88% 32%, white 0 3px, transparent 4px),
+        linear-gradient(35deg, transparent 72%, rgba(180,226,255,.28) 72.2%, transparent 72.7%),
+        linear-gradient(145deg, transparent 74%, rgba(180,226,255,.24) 74.2%, transparent 74.8%);
+      opacity: .75;
+    }
+
+    .stage {
+      position: relative;
+      z-index: 1;
+      width: min(1100px, 100vw);
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr minmax(320px, 390px) 1fr;
+      align-items: center;
+      gap: 34px;
+      padding: 28px;
+    }
+
+    .brand {
+      align-self: start;
+      padding-top: 28px;
+      text-shadow: 0 16px 28px rgba(0,0,0,.22);
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: clamp(74px, 9vw, 126px);
+      line-height: .95;
+      letter-spacing: 0;
+      color: #071729;
+    }
+
+    .brand p {
+      margin: 24px 0 28px;
+      color: #071729;
+      font-size: clamp(18px, 2.1vw, 28px);
+      font-weight: 800;
+      letter-spacing: 8px;
+    }
+
+    .info-card,
+    .float-card,
+    .dock {
+      border: 1px solid rgba(255,255,255,.34);
+      background: rgba(255,255,255,.18);
+      backdrop-filter: blur(20px);
+      box-shadow: 0 24px 60px rgba(0,0,0,.22);
+    }
+
+    .info-card {
+      width: min(330px, 100%);
+      border-radius: 18px;
+      padding: 22px 26px;
+      color: #081525;
+    }
+
+    .info-row {
+      display: grid;
+      grid-template-columns: 48px 1fr;
+      gap: 18px;
+      align-items: center;
+      padding: 10px 0;
+    }
+
+    .info-row strong {
+      display: block;
+      font-size: 24px;
+      margin-bottom: 6px;
+    }
+
+    .info-row span {
+      font-size: 15px;
+      color: rgba(8, 21, 37, .78);
+      font-weight: 600;
+    }
+
+    .icon {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      font-size: 27px;
+    }
+
+    .green {
+      color: var(--green);
+    }
+
+    .blue {
+      color: var(--blue);
+    }
+
+    .phone {
+      width: min(390px, 88vw);
+      aspect-ratio: 390 / 844;
+      border-radius: 50px;
+      padding: 12px;
+      background: linear-gradient(135deg, #222, #737373 23%, #050505 48%, #a1a1a1 100%);
+      box-shadow: 0 40px 90px rgba(0,0,0,.54), inset 0 0 0 2px rgba(255,255,255,.16);
+    }
+
+    .screen {
+      position: relative;
+      height: 100%;
+      overflow: hidden;
+      border-radius: 40px;
+      background:
+        radial-gradient(circle at 50% 58%, rgba(255, 120, 52, .22), transparent 26%),
+        linear-gradient(160deg, #04101a 0%, #082235 64%, #06111b 100%);
+    }
+
+    .screen::before {
+      content: "";
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      width: 112px;
+      height: 30px;
+      transform: translateX(-50%);
+      border-radius: 18px;
+      background: #010204;
+      z-index: 3;
+    }
+
+    .status {
+      position: relative;
+      z-index: 4;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .app-page {
+      display: none;
+      height: calc(100% - 52px);
+      padding: 0 18px 76px;
+      overflow: hidden;
+    }
+
+    .app-page.active {
+      display: block;
+    }
+
+    .app-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .app-title {
+      font-size: 31px;
+      font-weight: 900;
+      margin: 0;
+    }
+
+    .bell {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(255,255,255,.08);
+      border: 1px solid var(--line);
+    }
+
+    .panel {
+      border-radius: 16px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      box-shadow: 0 12px 28px rgba(0,0,0,.24);
+    }
+
+    .hero {
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 13px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+
+    .hero strong {
+      color: var(--green);
+      font-size: 15px;
+    }
+
+    .mini-mountain {
+      width: 95px;
+      height: 34px;
+      border-radius: 9px;
+      background:
+        linear-gradient(135deg, rgba(66,166,255,.58), rgba(112,223,120,.28)),
+        linear-gradient(145deg, transparent 43%, rgba(255,255,255,.85) 44% 56%, transparent 57%);
+      clip-path: polygon(0 100%, 20% 44%, 38% 78%, 58% 18%, 100% 100%);
+    }
+
+    .location,
+    .weather {
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .location {
+      display: grid;
+      grid-template-columns: 30px 1fr 54px;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .location h2,
+    .weather h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    .location p,
+    .agent-text,
+    .soft {
+      margin: 0;
+      line-height: 1.6;
+      color: var(--text-soft);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .tag {
+      float: right;
+      color: var(--green);
+      background: rgba(112,223,120,.16);
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+    }
+
+    .radar {
+      position: relative;
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle, var(--green) 0 5px, transparent 6px),
+        repeating-radial-gradient(circle, transparent 0 10px, rgba(112,223,120,.38) 11px 12px, transparent 13px 18px);
+      box-shadow: 0 0 20px rgba(112,223,120,.25);
+    }
+
+    .radar::before,
+    .radar::after {
+      content: "";
+      position: absolute;
+      background: rgba(112,223,120,.8);
+      inset: 8px auto 8px 26px;
+      width: 2px;
+    }
+
+    .radar::after {
+      inset: 26px 8px auto 8px;
+      width: auto;
+      height: 2px;
+    }
+
+    .weather {
+      display: grid;
+      grid-template-columns: 1fr 1px 1fr 46px;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .divider {
+      height: 44px;
+      background: rgba(255,255,255,.16);
+    }
+
+    .alert {
+      width: 46px;
+      height: 46px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: var(--orange);
+      font-size: 27px;
+      font-weight: 900;
+    }
+
+    .sos-wrap {
+      position: relative;
+      height: 264px;
+      display: grid;
+      place-items: center;
+    }
+
+    .sos-glow {
+      position: absolute;
+      width: 245px;
+      height: 245px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,126,52,.7) 0 26%, rgba(255,126,52,.2) 36%, transparent 72%);
+    }
+
+    .sos {
+      position: relative;
+      width: 154px;
+      height: 154px;
+      border-radius: 50%;
+      border: 4px solid rgba(255,255,255,.9);
+      display: grid;
+      place-items: center;
+      background: linear-gradient(#ff8441, #c92614);
+      box-shadow: 0 0 42px rgba(255,126,52,.75);
+      text-align: center;
+      font-weight: 900;
+    }
+
+    .sos span {
+      display: block;
+      font-size: 45px;
+      line-height: 1;
+    }
+
+    .sos small {
+      display: block;
+      margin-top: 8px;
+      font-size: 20px;
+    }
+
+    .tiles {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    .tile {
+      min-height: 128px;
+      padding: 15px;
+    }
+
+    .tile .big-icon {
+      font-size: 34px;
+      margin-bottom: 10px;
+    }
+
+    .tile strong {
+      display: block;
+      font-size: 17px;
+      margin-bottom: 6px;
+    }
+
+    .map {
+      position: relative;
+      height: 312px;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at center, rgba(66,166,255,.32), transparent 32%),
+        linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px),
+        linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+        #071a28;
+      background-size: auto, 24px 24px, 24px 24px, auto;
+    }
+
+    .center-pin {
+      position: absolute;
+      left: 50%;
+      top: 48%;
+      transform: translate(-50%, -50%);
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: var(--blue);
+      border: 3px solid var(--blue);
+      box-shadow: 0 0 24px rgba(66,166,255,.9);
+    }
+
+    .aid {
+      position: absolute;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .aid::before {
+      content: "●";
+      display: block;
+      color: var(--green);
+      font-size: 30px;
+      text-shadow: 0 0 16px rgba(112,223,120,.9);
+      line-height: 1;
+    }
+
+    .partner-list {
+      padding: 14px;
+      margin-top: 12px;
+    }
+
+    .partner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px;
+      margin-top: 8px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.06);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .partner span:last-child {
+      margin-left: auto;
+      color: var(--text-soft);
+    }
+
+    .agent-card,
+    .agent-row {
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+
+    .agent-card {
+      display: grid;
+      grid-template-columns: 54px 1fr;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .agent-icon {
+      width: 54px;
+      height: 54px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: radial-gradient(circle, #fff 0 7px, var(--blue) 8px 22px, rgba(66,166,255,.2) 23px);
+      box-shadow: 0 0 22px rgba(66,166,255,.56);
+    }
+
+    .agent-row {
+      display: grid;
+      grid-template-columns: 36px 1fr 20px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .orb {
+      height: 148px;
+      margin-top: 14px;
+      border-radius: 20px;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(66,166,255,.32), transparent 36%),
+        radial-gradient(circle at 48% 16%, white 0 4px, transparent 5px),
+        radial-gradient(circle at 24% 34%, white 0 4px, transparent 5px),
+        radial-gradient(circle at 74% 36%, white 0 4px, transparent 5px),
+        radial-gradient(circle at 30% 78%, white 0 4px, transparent 5px),
+        radial-gradient(circle at 72% 78%, white 0 4px, transparent 5px);
+      border: 1px solid rgba(66,166,255,.32);
+    }
+
+    .dock {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 12px;
+      height: 58px;
+      border-radius: 24px;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      align-items: center;
+      padding: 0 8px;
+      background: rgba(5, 20, 32, .78);
+    }
+
+    .nav {
+      border: 0;
+      background: transparent;
+      color: rgba(255,255,255,.46);
+      display: grid;
+      place-items: center;
+      gap: 2px;
+      font: inherit;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .nav b {
+      font-size: 18px;
+    }
+
+    .nav.active {
+      color: var(--green);
+    }
+
+    .float-column {
+      display: grid;
+      gap: 130px;
+      align-content: center;
+    }
+
+    .float-card {
+      width: 226px;
+      min-height: 118px;
+      border-radius: 18px;
+      padding: 22px;
+    }
+
+    .float-card h3 {
+      color: var(--blue);
+      margin: 0 0 10px;
+      font-size: 25px;
+    }
+
+    .float-card p {
+      margin: 0;
+      line-height: 1.55;
+      color: rgba(255,255,255,.85);
+      font-weight: 700;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        overflow: auto;
+      }
+
+      .stage {
+        min-height: auto;
+        grid-template-columns: 1fr;
+        justify-items: center;
+        padding: 18px 14px 34px;
+      }
+
+      .brand {
+        justify-self: stretch;
+        padding-top: 0;
+      }
+
+      .brand h1 {
+        font-size: 64px;
+      }
+
+      .brand p {
+        font-size: 17px;
+        letter-spacing: 5px;
+        margin: 14px 0 18px;
+      }
+
+      .info-card,
+      .float-column {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="topography"></div>
+  <div class="network"></div>
+
+  <main class="stage">
+    <section class="brand">
+      <h1>行智</h1>
+      <p>AI守护户外每一步</p>
+      <div class="info-card">
+        <div class="info-row">
+          <div class="icon green">👥</div>
+          <div><strong>附近互助</strong><span>就近响应</span></div>
+        </div>
+        <div class="info-row">
+          <div class="icon blue">◎</div>
+          <div><strong>Agent专家系统</strong><span>AI智能决策 · 全程守护</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="phone" aria-label="iPhone 界面预览">
+      <div class="screen">
+        <div class="status"><span>9:41</span><span>▮▮▮ ︿ ▰</span></div>
+
+        <section class="app-page active" data-page="home">
+          <header class="app-header">
+            <h2 class="app-title">行智</h2>
+            <div class="bell">♧</div>
+          </header>
+
+          <div class="panel hero">
+            <strong>AI守护户外每一步</strong>
+            <div class="mini-mountain"></div>
+          </div>
+
+          <div class="panel location">
+            <div class="green" style="font-size:29px;">●</div>
+            <div>
+              <span class="tag">信号良好</span>
+              <h2>当前位置</h2>
+              <p>四川省阿坝藏族羌族自治州<br>四姑娘山镇 · 海拔 3,250 米<br>31.0621°N, 102.8858°E</p>
+            </div>
+            <div class="radar"></div>
+          </div>
+
+          <div class="panel weather">
+            <div><h2>🌤️ 12°C</h2><p class="soft">多云转晴</p></div>
+            <div class="divider"></div>
+            <div><h2>风险提醒</h2><p class="soft" style="color:var(--orange)">中等风险</p></div>
+            <div class="alert">!</div>
+          </div>
+
+          <div class="sos-wrap">
+            <div class="sos-glow"></div>
+            <div class="sos"><div><span>SOS</span><small>一键求助</small></div></div>
+          </div>
+          <p class="soft" style="text-align:center;margin-top:-14px;">遇到危险，立即获得帮助</p>
+
+          <div class="tiles">
+            <div class="panel tile"><div class="big-icon green">👥</div><strong>附近互助</strong><p class="soft">就近响应 互帮互助</p></div>
+            <div class="panel tile"><div class="big-icon blue">AI</div><strong>Agent专家系统</strong><p class="soft">AI智能分析 风险预警</p></div>
+          </div>
+        </section>
+
+        <section class="app-page" data-page="aid">
+          <header class="app-header">
+            <h2 class="app-title">附近互助</h2>
+            <span class="tag">4人在线</span>
+          </header>
+          <div class="panel map">
+            <div class="center-pin">◎</div>
+            <div class="aid" style="left:20%;top:19%;">890m</div>
+            <div class="aid" style="right:18%;top:16%;">1.6km</div>
+            <div class="aid" style="left:24%;bottom:18%;">1.6km</div>
+            <div class="aid" style="right:18%;bottom:16%;">2.1km</div>
+          </div>
+          <div class="panel partner-list">
+            <strong>附近伙伴 (4)</strong>
+            <div class="partner"><span class="green">●</span><span>正在前往</span><span>890m</span></div>
+            <div class="partner"><span class="green">●</span><span>正在前往</span><span>1.2km</span></div>
+            <div class="partner"><span class="green">●</span><span>可响应</span><span>1.6km</span></div>
+            <div class="partner"><span class="green">●</span><span>可响应</span><span>2.1km</span></div>
+          </div>
+        </section>
+
+        <section class="app-page" data-page="agent">
+          <header class="app-header">
+            <h2 class="app-title">Agent专家系统</h2>
+          </header>
+          <div class="panel agent-card">
+            <div class="agent-icon"></div>
+            <div>
+              <strong>你好，我是行智AI Agent</strong>
+              <p class="agent-text">我可以为你分析风险并提供专业建议，保障你的安全。</p>
+            </div>
+          </div>
+          <div class="panel agent-row"><span class="blue">▣</span><div><strong>风险评估</strong><p class="agent-text">AI实时分析环境与身体风险</p></div><span>›</span></div>
+          <div class="panel agent-row"><span class="green">✚</span><div><strong>急救建议</strong><p class="agent-text">AI生成应对建议与处置步骤</p></div><span>›</span></div>
+          <div class="panel agent-row"><span style="color:var(--orange)">△</span><div><strong>路线预警</strong><p class="agent-text">AI识别道路服务与天气变化</p></div><span>›</span></div>
+          <div class="panel agent-row"><span class="blue">⚒</span><div><strong>工具调用</strong><p class="agent-text">AI调用地图、天气等工具</p></div><span>›</span></div>
+          <div class="panel" style="padding:18px;">
+            <h2 style="color:var(--blue);margin:0 0 8px;">AI智能决策</h2>
+            <p class="soft">多维分析 × 实时推理<br>为你的安全出行护航</p>
+            <div class="orb"></div>
+          </div>
+        </section>
+
+        <nav class="dock">
+          <button class="nav active" data-target="home"><b>⌂</b>首页</button>
+          <button class="nav" data-target="aid"><b>☷</b>互助</button>
+          <button class="nav" data-target="home"><b>✚</b>求助</button>
+          <button class="nav" data-target="agent"><b>AI</b>智能</button>
+          <button class="nav" data-target="agent"><b>♙</b>我的</button>
+        </nav>
+      </div>
+    </section>
+
+    <aside class="float-column">
+      <div class="float-card">
+        <h3>AI智能决策</h3>
+        <p>多维分析 × 实时推理<br>为你的安全出行护航</p>
+      </div>
+      <div class="float-card dock-like">
+        <p style="display:flex;justify-content:space-between;font-size:28px;margin-bottom:10px;"><span class="green">▱</span><span class="green">✚</span><span style="color:var(--orange)">△</span><span class="blue">⚒</span></p>
+        <p>风险评估　急救建议<br>路线预警　工具调用</p>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const pages = document.querySelectorAll(".app-page");
+    const buttons = document.querySelectorAll(".nav");
+
+    buttons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const target = button.dataset.target;
+        pages.forEach((page) => page.classList.toggle("active", page.dataset.page === target));
+        buttons.forEach((item) => item.classList.toggle("active", item === button));
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 void main() {
   runApp(const XingZhiApp());
@@ -942,11 +944,6 @@ class MutualAidPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  '提交求助需求',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 7),
                 Row(
                   children: [
                     Expanded(
@@ -976,6 +973,27 @@ class MutualAidPage extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 7),
+                Container(
+                  height: 38,
+                  padding: const EdgeInsets.symmetric(horizontal: 11),
+                  decoration: BoxDecoration(
+                    color: isDayMode ? Colors.white.withOpacity(0.64) : Colors.black.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isDayMode ? const Color(0x66D9A966) : Colors.white.withOpacity(0.1),
+                    ),
+                  ),
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '描述你需要的帮助',
+                    style: TextStyle(
+                      color: isDayMode ? const Color(0x991A120D) : AppColors.soft,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 7),
                 SizedBox(
@@ -1011,25 +1029,6 @@ class MutualAidPage extends StatelessWidget {
                 const SizedBox(height: 6),
                 for (final request in requests)
                   HelpRequestRow(request: request, isDayMode: isDayMode),
-                const SizedBox(height: 4),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: SizedBox(
-                    height: 88,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Positioned.fill(child: MapGrid(isDayMode: isDayMode)),
-                        SizedBox(
-                          width: 74,
-                          height: 74,
-                          child: CustomPaint(painter: RadarRingsPainter(AppColors.blue)),
-                        ),
-                        const Icon(Icons.my_location_rounded, color: AppColors.blue, size: 24),
-                      ],
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -1208,6 +1207,92 @@ class HelpRequestRow extends StatelessWidget {
   }
 }
 
+class DifyWorkflowConfig {
+  const DifyWorkflowConfig._();
+
+  // Dify API 服务器地址。你截图里显示的是 https://api.dify.ai/v1
+  static const String apiBaseUrl = 'https://api.dify.ai/v1';
+
+  // TODO: 在这里填写你的 Dify App API Key，格式通常以 app- 开头。
+  static const String apiKey = 'xxx';
+
+  // 如果开始节点后面新增 latitude / longitude 等输入字段，就写在这里。
+  // 你现在的开始节点只有 userinput.query 和 userinput.files，所以 inputs 先保持空。
+  static Map<String, dynamic> buildInputs(String question) {
+    return {};
+  }
+}
+
+class DifyWorkflowService {
+  const DifyWorkflowService();
+
+  bool get isConfigured =>
+      DifyWorkflowConfig.apiBaseUrl.isNotEmpty && DifyWorkflowConfig.apiKey.isNotEmpty;
+
+  Future<String> run(String question) async {
+    if (!isConfigured) {
+      return 'Dify 接口还没有配置。请在代码里的 DifyWorkflowConfig 填写 apiKey。';
+    }
+
+    final response = await http.post(
+      Uri.parse('${DifyWorkflowConfig.apiBaseUrl}/chat-messages'),
+      headers: {
+        'Authorization': 'Bearer ${DifyWorkflowConfig.apiKey}',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'inputs': DifyWorkflowConfig.buildInputs(question),
+        'query': question,
+        'response_mode': 'blocking',
+        'conversation_id': '',
+        'user': 'xingzhi-preview-user',
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return 'Dify 请求失败：${response.statusCode}';
+    }
+
+    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final directAnswer = data['answer'];
+    if (directAnswer != null && directAnswer.toString().trim().isNotEmpty) {
+      return directAnswer.toString();
+    }
+
+    final runData = data['data'];
+    if (runData is Map<String, dynamic>) {
+      final error = runData['error'];
+      if (error != null && error.toString().isNotEmpty) {
+        return 'Dify 工作流返回错误：$error';
+      }
+
+      final outputs = runData['outputs'];
+      final answer = _pickAnswer(outputs);
+      if (answer.isNotEmpty) {
+        return answer;
+      }
+    }
+
+    return 'Dify 已返回结果，但没有找到可展示的回答字段。请检查工作流最后的输出变量。';
+  }
+
+  String _pickAnswer(dynamic outputs) {
+    if (outputs is String) {
+      return outputs;
+    }
+    if (outputs is Map<String, dynamic>) {
+      for (final key in const ['answer', 'text', 'result', 'output', 'reply']) {
+        final value = outputs[key];
+        if (value != null && value.toString().trim().isNotEmpty) {
+          return value.toString();
+        }
+      }
+      return const JsonEncoder.withIndent('  ').convert(outputs);
+    }
+    return '';
+  }
+}
+
 class _AgentChatEntry {
   const _AgentChatEntry({
     required this.fromAgent,
@@ -1231,52 +1316,63 @@ class AgentPage extends StatefulWidget {
 
 class _AgentPageState extends State<AgentPage> {
   final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final DifyWorkflowService _workflowService = const DifyWorkflowService();
   final List<_AgentChatEntry> _messages = [
-    const _AgentChatEntry(
-      fromAgent: true,
-      text: '我已接入行智安全智能体，会持续分析你的位置、天气和路线风险。',
-    ),
-    const _AgentChatEntry(fromAgent: false, text: '帮我评估当前路线风险。'),
-    const _AgentChatEntry(
-      fromAgent: true,
-      text: '当前海拔 3,250 米，天气多云转晴。建议 40 分钟内完成补水，并避开西侧碎石坡。',
-    ),
-    const _AgentChatEntry(fromAgent: true, text: '', tool: true),
+    const _AgentChatEntry(fromAgent: true, text: '您好，行智Agent很高兴为您服务！'),
   ];
+  bool _isSending = false;
 
   @override
   void dispose() {
     _controller.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  void _send([String? preset]) {
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) {
+        return;
+      }
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  Future<void> _send([String? preset]) async {
     final question = (preset ?? _controller.text).trim();
-    if (question.isEmpty) {
+    if (question.isEmpty || _isSending) {
       return;
     }
 
     _controller.clear();
     setState(() {
+      _isSending = true;
       _messages.add(_AgentChatEntry(fromAgent: false, text: question));
-      _messages.add(_AgentChatEntry(fromAgent: true, text: _replyFor(question)));
-      if (question.contains('风险') || question.contains('路线')) {
-        _messages.add(const _AgentChatEntry(fromAgent: true, text: '', tool: true));
-      }
+      _messages.add(const _AgentChatEntry(fromAgent: true, text: '正在调用行智工作流分析...'));
     });
-  }
+    _scrollToBottom();
 
-  String _replyFor(String question) {
-    if (question.contains('急救')) {
-      return '已生成急救建议：先确认意识和呼吸，保持体温，避免继续移动伤处，并同步通知附近联系人。';
+    String answer;
+    try {
+      answer = await _workflowService.run(question);
+    } catch (error) {
+      answer = 'Dify 工作流调用异常：$error';
     }
-    if (question.contains('路线')) {
-      return '建议选择东侧缓坡返回补给点，全程约 1.8 公里。西侧碎石坡风险偏高，暂不推荐。';
+    if (!mounted) {
+      return;
     }
-    if (question.contains('风险')) {
-      return '综合位置、海拔、天气和体力消耗，当前风险为中等。建议降低行进速度，20 分钟后重新评估。';
-    }
-    return '已收到。我会结合当前位置、天气、海拔和你的安全档案给出建议。';
+
+    setState(() {
+      _isSending = false;
+      _messages.removeLast();
+      _messages.add(_AgentChatEntry(fromAgent: true, text: answer));
+    });
+    _scrollToBottom();
   }
 
   @override
@@ -1297,6 +1393,7 @@ class _AgentPageState extends State<AgentPage> {
                   children: [
                     Expanded(
                       child: ListView(
+                        controller: _scrollController,
                         padding: const EdgeInsets.only(bottom: 2),
                         children: [
                           for (final message in _messages)
@@ -1312,11 +1409,10 @@ class _AgentPageState extends State<AgentPage> {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    AgentQuickActions(isDayMode: widget.isDayMode, onAction: _send),
-                    const SizedBox(height: 6),
                     AgentInputBar(
                       isDayMode: widget.isDayMode,
                       controller: _controller,
+                      enabled: !_isSending,
                       onSend: () => _send(),
                     ),
                   ],
@@ -1403,28 +1499,69 @@ class AgentMessageBubble extends StatelessWidget {
         ? (isDayMode ? const Color(0xFF1A120D) : Colors.white)
         : Colors.white;
 
-    return Align(
-      alignment: fromAgent ? Alignment.centerLeft : Alignment.centerRight,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 236),
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: bubbleColor,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(14),
-            topRight: const Radius.circular(14),
-            bottomLeft: Radius.circular(fromAgent ? 4 : 14),
-            bottomRight: Radius.circular(fromAgent ? 14 : 4),
-          ),
-          border: fromAgent
-              ? Border.all(color: isDayMode ? const Color(0x66D9A966) : Colors.white.withOpacity(0.1))
-              : null,
+    final bubble = Container(
+      constraints: const BoxConstraints(maxWidth: 210),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: bubbleColor,
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(14),
+          topRight: const Radius.circular(14),
+          bottomLeft: Radius.circular(fromAgent ? 4 : 14),
+          bottomRight: Radius.circular(fromAgent ? 14 : 4),
         ),
-        child: Text(
-          text,
-          style: TextStyle(color: textColor, fontSize: 12, height: 1.34, fontWeight: FontWeight.w700),
+        border: fromAgent
+            ? Border.all(color: isDayMode ? const Color(0x66D9A966) : Colors.white.withOpacity(0.1))
+            : null,
+      ),
+      child: Text(
+        text,
+        style: TextStyle(color: textColor, fontSize: 12, height: 1.34, fontWeight: FontWeight.w700),
+      ),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 9),
+      child: Row(
+        mainAxisAlignment: fromAgent ? MainAxisAlignment.start : MainAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: fromAgent
+            ? [
+                const AgentAvatar(size: 26),
+                const SizedBox(width: 7),
+                Flexible(child: bubble),
+              ]
+            : [
+                Flexible(child: bubble),
+                const SizedBox(width: 7),
+                UserChatAvatar(isDayMode: isDayMode),
+              ],
+      ),
+    );
+  }
+}
+
+class UserChatAvatar extends StatelessWidget {
+  const UserChatAvatar({required this.isDayMode, super.key});
+
+  final bool isDayMode;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 26,
+      height: 26,
+      decoration: BoxDecoration(
+        color: isDayMode ? const Color(0xFFFFE7B8) : Colors.white.withOpacity(0.1),
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: isDayMode ? const Color(0x66D9A966) : Colors.white.withOpacity(0.12),
         ),
+      ),
+      child: Icon(
+        Icons.person_rounded,
+        color: isDayMode ? const Color(0xFF8A4A00) : AppColors.green,
+        size: 16,
       ),
     );
   }
@@ -1558,12 +1695,14 @@ class AgentInputBar extends StatelessWidget {
   const AgentInputBar({
     required this.isDayMode,
     required this.controller,
+    required this.enabled,
     required this.onSend,
     super.key,
   });
 
   final bool isDayMode;
   final TextEditingController controller;
+  final bool enabled;
   final VoidCallback onSend;
 
   @override
@@ -1581,6 +1720,7 @@ class AgentInputBar extends StatelessWidget {
           Expanded(
             child: TextField(
               controller: controller,
+              enabled: enabled,
               maxLines: 1,
               onSubmitted: (_) => onSend(),
               cursorColor: AppColors.orange,
@@ -1604,7 +1744,7 @@ class AgentInputBar extends StatelessWidget {
             ),
           ),
           GestureDetector(
-            onTap: onSend,
+            onTap: enabled ? onSend : null,
             child: Container(
               width: 30,
               height: 30,
@@ -1612,7 +1752,11 @@ class AgentInputBar extends StatelessWidget {
                 color: AppColors.orange,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 18),
+              child: Icon(
+                enabled ? Icons.arrow_upward_rounded : Icons.hourglass_top_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
             ),
           ),
         ],
@@ -1694,7 +1838,7 @@ class ProfilePage extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!isLoggedIn) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+        padding: const EdgeInsets.fromLTRB(18, 30, 18, 18),
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
@@ -1708,15 +1852,16 @@ class ProfilePage extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxHeight < 700;
-        final gap = compact ? 5.0 : 8.0;
+        final gap = compact ? 5.0 : 14.0;
 
         final content = Column(
           mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
             children: [
-              _SignedInProfile(isDayMode: isDayMode),
+              _SignedInProfile(isDayMode: isDayMode, expanded: !compact),
               SizedBox(height: gap),
               _ProfileSection(
                 isDayMode: isDayMode,
+                expanded: !compact,
                 children: const [
                   ProfileActionRow(
                     icon: Icons.contact_emergency_rounded,
@@ -1736,9 +1881,9 @@ class ProfilePage extends StatelessWidget {
                 ],
               ),
               SizedBox(height: gap),
-              if (!compact) const Spacer(flex: 1),
               _ProfileSection(
                 isDayMode: isDayMode,
+                expanded: !compact,
                 children: const [
                   ProfileActionRow(
                     icon: Icons.notifications_active_rounded,
@@ -1752,13 +1897,13 @@ class ProfilePage extends StatelessWidget {
                   ),
                 ],
               ),
-              if (compact) const SizedBox(height: 12) else const Spacer(flex: 3),
-              LogoutButton(onPressed: onLoginToggle),
+              if (compact) const SizedBox(height: 12) else const Spacer(),
+              LogoutButton(onPressed: onLoginToggle, expanded: !compact),
             ],
         );
 
         return Padding(
-          padding: EdgeInsets.fromLTRB(18, compact ? 6 : 22, 18, compact ? 6 : 18),
+          padding: EdgeInsets.fromLTRB(18, compact ? 24 : 24, 18, compact ? 6 : 14),
           child: compact
               ? SingleChildScrollView(child: content)
               : content,
@@ -1769,9 +1914,10 @@ class ProfilePage extends StatelessWidget {
 }
 
 class LogoutButton extends StatelessWidget {
-  const LogoutButton({required this.onPressed, super.key});
+  const LogoutButton({required this.onPressed, this.expanded = false, super.key});
 
   final VoidCallback onPressed;
+  final bool expanded;
 
   @override
   Widget build(BuildContext context) {
@@ -1782,7 +1928,7 @@ class LogoutButton extends StatelessWidget {
         onTap: onPressed,
         child: Container(
           width: double.infinity,
-          height: 38,
+          height: expanded ? 44 : 38,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: AppColors.orange.withOpacity(0.76), width: 1.2),
@@ -1861,9 +2007,10 @@ class _LoginPanel extends StatelessWidget {
 }
 
 class _SignedInProfile extends StatelessWidget {
-  const _SignedInProfile({required this.isDayMode});
+  const _SignedInProfile({required this.isDayMode, this.expanded = false});
 
   final bool isDayMode;
+  final bool expanded;
 
   @override
   Widget build(BuildContext context) {
@@ -1875,11 +2022,11 @@ class _SignedInProfile extends StatelessWidget {
         child: InkWell(
           onTap: () {},
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 18, 14, 18),
+            padding: EdgeInsets.fromLTRB(16, expanded ? 24 : 18, 14, expanded ? 24 : 18),
             child: Row(
               children: [
-                _Avatar(size: 64, isLoggedIn: true, isDayMode: isDayMode),
-                const SizedBox(width: 14),
+                _Avatar(size: expanded ? 72 : 64, isLoggedIn: true, isDayMode: isDayMode),
+                SizedBox(width: expanded ? 16 : 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1890,18 +2037,18 @@ class _SignedInProfile extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: isDayMode ? Colors.black : Colors.white,
-                          fontSize: 19,
+                          fontSize: expanded ? 21 : 19,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
-                      const SizedBox(height: 5),
+                      SizedBox(height: expanded ? 7 : 5),
                       Text(
                         '138****8621',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: isDayMode ? const Color(0xB21A120D) : AppColors.soft,
-                          fontSize: 13,
+                          fontSize: expanded ? 14 : 13,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -2046,10 +2193,15 @@ class _ProfileStat extends StatelessWidget {
 }
 
 class _ProfileSection extends StatelessWidget {
-  const _ProfileSection({required this.isDayMode, required this.children});
+  const _ProfileSection({
+    required this.isDayMode,
+    required this.children,
+    this.expanded = false,
+  });
 
   final bool isDayMode;
   final List<Widget> children;
+  final bool expanded;
 
   @override
   Widget build(BuildContext context) {
@@ -2057,10 +2209,21 @@ class _ProfileSection extends StatelessWidget {
       radius: 18,
       isDayMode: isDayMode,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 7, 10, 2),
+        padding: EdgeInsets.fromLTRB(10, expanded ? 10 : 7, 10, expanded ? 6 : 2),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: children,
+          children: [
+            for (final child in children)
+              if (child is ProfileActionRow)
+                ProfileActionRow(
+                  icon: child.icon,
+                  title: child.title,
+                  color: child.color,
+                  expanded: expanded,
+                )
+              else
+                child,
+          ],
         ),
       ),
     );
@@ -2072,38 +2235,40 @@ class ProfileActionRow extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.color,
+    this.expanded = false,
     super.key,
   });
 
   final IconData icon;
   final String title;
   final Color color;
+  final bool expanded;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 3),
+      padding: EdgeInsets.only(bottom: expanded ? 7 : 3),
       child: SizedBox(
-        height: 38,
+        height: expanded ? 46 : 38,
         child: Row(
           children: [
             Container(
-              width: 28,
-              height: 28,
+              width: expanded ? 34 : 28,
+              height: expanded ? 34 : 28,
               decoration: BoxDecoration(
                 color: color.withOpacity(0.16),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: color.withOpacity(0.42)),
               ),
-              child: Icon(icon, color: color, size: 16),
+              child: Icon(icon, color: color, size: expanded ? 19 : 16),
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: expanded ? 12 : 10),
             Expanded(
               child: Text(
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900),
+                style: TextStyle(fontSize: expanded ? 15 : 13, fontWeight: FontWeight.w900),
               ),
             ),
             const Icon(Icons.chevron_right_rounded, color: AppColors.soft),

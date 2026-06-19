@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 
 void main() {
   runApp(const XingZhiApp());
@@ -60,6 +61,9 @@ class _XingZhiHomeState extends State<XingZhiHome> {
   AppTab _selectedTab = AppTab.home;
   bool _isDayMode = false;
   bool _isLoggedIn = false;
+  String _authToken = '';
+  String _nickname = '山野行者';
+  String _phone = '138****8621';
 
   @override
   Widget build(BuildContext context) {
@@ -99,7 +103,11 @@ class _XingZhiHomeState extends State<XingZhiHome> {
           onThemeToggle: () => setState(() => _isDayMode = !_isDayMode),
         ),
       AppTab.aid => MutualAidPage(key: const ValueKey('aid'), isDayMode: _isDayMode),
-      AppTab.agent => AgentPage(key: const ValueKey('agent'), isDayMode: _isDayMode),
+      AppTab.agent => AgentPage(
+          key: const ValueKey('agent'),
+          isDayMode: _isDayMode,
+          authToken: _authToken,
+        ),
       AppTab.messages => MessagesPage(
           key: const ValueKey('messages'),
           isDayMode: _isDayMode,
@@ -108,9 +116,30 @@ class _XingZhiHomeState extends State<XingZhiHome> {
           key: const ValueKey('profile'),
           isDayMode: _isDayMode,
           isLoggedIn: _isLoggedIn,
-          onLoginToggle: () => setState(() => _isLoggedIn = !_isLoggedIn),
+          nickname: _nickname,
+          phone: _phone,
+          onAuthSuccess: _handleAuthSuccess,
+          onLogout: _handleLogout,
         ),
     };
+  }
+
+  void _handleAuthSuccess(AuthSession session) {
+    setState(() {
+      _isLoggedIn = true;
+      _authToken = session.token;
+      _nickname = session.nickname.isNotEmpty ? session.nickname : session.username;
+      _phone = session.phone.isNotEmpty ? session.phone : '未绑定手机号';
+    });
+  }
+
+  void _handleLogout() {
+    setState(() {
+      _isLoggedIn = false;
+      _authToken = '';
+      _nickname = '山野行者';
+      _phone = '138****8621';
+    });
   }
 }
 
@@ -1207,89 +1236,149 @@ class HelpRequestRow extends StatelessWidget {
   }
 }
 
-class DifyWorkflowConfig {
-  const DifyWorkflowConfig._();
+class BackendConfig {
+  const BackendConfig._();
 
-  // Dify API 服务器地址。你截图里显示的是 https://api.dify.ai/v1
-  static const String apiBaseUrl = 'https://api.dify.ai/v1';
-
-  // TODO: 在这里填写你的 Dify App API Key，格式通常以 app- 开头。
-  static const String apiKey = 'xxx';
-
-  // 如果开始节点后面新增 latitude / longitude 等输入字段，就写在这里。
-  // 你现在的开始节点只有 userinput.query 和 userinput.files，所以 inputs 先保持空。
-  static Map<String, dynamic> buildInputs(String question) {
-    return {};
-  }
+  // Spring Boot 后端地址。浏览器预览用 localhost；真机测试时换成电脑局域网 IP。
+  static const String baseUrl = 'http://localhost:8080';
 }
 
-class DifyWorkflowService {
-  const DifyWorkflowService();
+class BackendApiService {
+  const BackendApiService();
 
-  bool get isConfigured =>
-      DifyWorkflowConfig.apiBaseUrl.isNotEmpty && DifyWorkflowConfig.apiKey.isNotEmpty;
-
-  Future<String> run(String question) async {
-    if (!isConfigured) {
-      return 'Dify 接口还没有配置。请在代码里的 DifyWorkflowConfig 填写 apiKey。';
-    }
-
+  Future<AuthSession> login({required String username, required String password}) async {
     final response = await http.post(
-      Uri.parse('${DifyWorkflowConfig.apiBaseUrl}/chat-messages'),
-      headers: {
-        'Authorization': 'Bearer ${DifyWorkflowConfig.apiKey}',
-        'Content-Type': 'application/json',
-      },
+      Uri.parse('${BackendConfig.baseUrl}/app/auth/login'),
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
-        'inputs': DifyWorkflowConfig.buildInputs(question),
-        'query': question,
-        'response_mode': 'blocking',
-        'conversation_id': '',
-        'user': 'xingzhi-preview-user',
+        'username': username,
+        'password': password,
       }),
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      return 'Dify 请求失败：${response.statusCode}';
+      throw Exception('登录失败：${response.statusCode}');
     }
 
     final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-    final directAnswer = data['answer'];
-    if (directAnswer != null && directAnswer.toString().trim().isNotEmpty) {
-      return directAnswer.toString();
+    if (data['code'] != 200) {
+      throw Exception(data['msg']?.toString() ?? '登录失败');
     }
-
-    final runData = data['data'];
-    if (runData is Map<String, dynamic>) {
-      final error = runData['error'];
-      if (error != null && error.toString().isNotEmpty) {
-        return 'Dify 工作流返回错误：$error';
-      }
-
-      final outputs = runData['outputs'];
-      final answer = _pickAnswer(outputs);
-      if (answer.isNotEmpty) {
-        return answer;
-      }
+    final result = data['data'];
+    if (result is Map<String, dynamic>) {
+      return AuthSession.fromJson(result);
     }
-
-    return 'Dify 已返回结果，但没有找到可展示的回答字段。请检查工作流最后的输出变量。';
+    throw Exception('登录返回数据异常');
   }
 
-  String _pickAnswer(dynamic outputs) {
-    if (outputs is String) {
-      return outputs;
+  Future<AuthSession> register({
+    required String username,
+    required String password,
+    required String nickname,
+    required String phone,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${BackendConfig.baseUrl}/app/auth/register'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'username': username,
+        'password': password,
+        'nickname': nickname,
+        'phone': phone,
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('注册失败：${response.statusCode}');
     }
-    if (outputs is Map<String, dynamic>) {
-      for (final key in const ['answer', 'text', 'result', 'output', 'reply']) {
-        final value = outputs[key];
-        if (value != null && value.toString().trim().isNotEmpty) {
-          return value.toString();
-        }
+
+    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (data['code'] != 200) {
+      throw Exception(data['msg']?.toString() ?? '注册失败');
+    }
+    final result = data['data'];
+    if (result is Map<String, dynamic>) {
+      return AuthSession.fromJson(result);
+    }
+    throw Exception('注册返回数据异常');
+  }
+
+  Future<String> chatWithAgent(String message, String token, {XFile? image}) async {
+    if (token.isEmpty) {
+      return '请先登录后再使用行智 Agent。';
+    }
+
+    late http.Response response;
+    if (image == null) {
+      response = await http.post(
+        Uri.parse('${BackendConfig.baseUrl}/app/agent/chat'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'message': message}),
+      );
+    } else {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${BackendConfig.baseUrl}/app/agent/chat'),
+      );
+      request.headers['Authorization'] = 'Bearer $token';
+      request.fields['message'] = message;
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'image',
+          await image.readAsBytes(),
+          filename: image.name.isNotEmpty ? image.name : 'agent-image.jpg',
+        ),
+      );
+      response = await http.Response.fromStream(await request.send());
+    }
+
+    if (response.statusCode == 401) {
+      return '登录状态已失效，请重新登录。';
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return '后端请求失败：${response.statusCode}';
+    }
+
+    final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (data['code'] != 200) {
+      return data['msg']?.toString() ?? '后端返回错误';
+    }
+
+    final result = data['data'];
+    if (result is Map<String, dynamic>) {
+      final reply = result['reply'];
+      if (reply != null && reply.toString().trim().isNotEmpty) {
+        return reply.toString();
       }
-      return const JsonEncoder.withIndent('  ').convert(outputs);
     }
-    return '';
+
+    return '后端已响应，但没有返回可展示的 reply 字段。';
+  }
+}
+
+class AuthSession {
+  const AuthSession({
+    required this.token,
+    required this.username,
+    required this.nickname,
+    required this.phone,
+  });
+
+  final String token;
+  final String username;
+  final String nickname;
+  final String phone;
+
+  factory AuthSession.fromJson(Map<String, dynamic> json) {
+    return AuthSession(
+      token: json['token']?.toString() ?? '',
+      username: json['username']?.toString() ?? '',
+      nickname: json['nickname']?.toString() ?? '',
+      phone: json['phone']?.toString() ?? '',
+    );
   }
 }
 
@@ -1306,9 +1395,10 @@ class _AgentChatEntry {
 }
 
 class AgentPage extends StatefulWidget {
-  const AgentPage({required this.isDayMode, super.key});
+  const AgentPage({required this.isDayMode, required this.authToken, super.key});
 
   final bool isDayMode;
+  final String authToken;
 
   @override
   State<AgentPage> createState() => _AgentPageState();
@@ -1317,11 +1407,13 @@ class AgentPage extends StatefulWidget {
 class _AgentPageState extends State<AgentPage> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final DifyWorkflowService _workflowService = const DifyWorkflowService();
+  final BackendApiService _apiService = const BackendApiService();
+  final ImagePicker _imagePicker = ImagePicker();
   final List<_AgentChatEntry> _messages = [
     const _AgentChatEntry(fromAgent: true, text: '您好，行智Agent很高兴为您服务！'),
   ];
   bool _isSending = false;
+  XFile? _selectedImage;
 
   @override
   void dispose() {
@@ -1345,23 +1437,32 @@ class _AgentPageState extends State<AgentPage> {
 
   Future<void> _send([String? preset]) async {
     final question = (preset ?? _controller.text).trim();
-    if (question.isEmpty || _isSending) {
+    final image = _selectedImage;
+    if ((question.isEmpty && image == null) || _isSending) {
       return;
     }
 
     _controller.clear();
     setState(() {
       _isSending = true;
-      _messages.add(_AgentChatEntry(fromAgent: false, text: question));
-      _messages.add(const _AgentChatEntry(fromAgent: true, text: '正在调用行智工作流分析...'));
+      _selectedImage = null;
+      _messages.add(_AgentChatEntry(
+        fromAgent: false,
+        text: image == null ? question : '${question.isEmpty ? '请分析这张图片' : question}\n[已附图片]',
+      ));
+      _messages.add(const _AgentChatEntry(fromAgent: true, text: '正在连接行智后端分析...'));
     });
     _scrollToBottom();
 
     String answer;
     try {
-      answer = await _workflowService.run(question);
+      answer = await _apiService.chatWithAgent(
+        question.isEmpty ? '请分析这张图片' : question,
+        widget.authToken,
+        image: image,
+      );
     } catch (error) {
-      answer = 'Dify 工作流调用异常：$error';
+      answer = '后端 Agent 调用异常：$error';
     }
     if (!mounted) {
       return;
@@ -1373,6 +1474,21 @@ class _AgentPageState extends State<AgentPage> {
       _messages.add(_AgentChatEntry(fromAgent: true, text: answer));
     });
     _scrollToBottom();
+  }
+
+  Future<void> _pickImage() async {
+    if (_isSending) {
+      return;
+    }
+    final image = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 78,
+      maxWidth: 1600,
+    );
+    if (image == null || !mounted) {
+      return;
+    }
+    setState(() => _selectedImage = image);
   }
 
   @override
@@ -1413,6 +1529,9 @@ class _AgentPageState extends State<AgentPage> {
                       isDayMode: widget.isDayMode,
                       controller: _controller,
                       enabled: !_isSending,
+                      selectedImageName: _selectedImage?.name,
+                      onPickImage: _pickImage,
+                      onClearImage: () => setState(() => _selectedImage = null),
                       onSend: () => _send(),
                     ),
                   ],
@@ -1696,68 +1815,121 @@ class AgentInputBar extends StatelessWidget {
     required this.isDayMode,
     required this.controller,
     required this.enabled,
+    required this.onPickImage,
+    required this.onClearImage,
     required this.onSend,
+    this.selectedImageName,
     super.key,
   });
 
   final bool isDayMode;
   final TextEditingController controller;
   final bool enabled;
+  final String? selectedImageName;
+  final VoidCallback onPickImage;
+  final VoidCallback onClearImage;
   final VoidCallback onSend;
 
   @override
   Widget build(BuildContext context) {
+    final hasImage = selectedImageName != null && selectedImageName!.isNotEmpty;
     return Container(
-      height: 40,
-      padding: const EdgeInsets.only(left: 12, right: 5),
+      height: hasImage ? 70 : 40,
+      padding: const EdgeInsets.only(left: 8, right: 5, top: 5, bottom: 5),
       decoration: BoxDecoration(
         color: isDayMode ? Colors.white.withOpacity(0.72) : Colors.black.withOpacity(0.22),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: isDayMode ? const Color(0x66D9A966) : Colors.white.withOpacity(0.1)),
       ),
-      child: Row(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              enabled: enabled,
-              maxLines: 1,
-              onSubmitted: (_) => onSend(),
-              cursorColor: AppColors.orange,
-              textAlignVertical: TextAlignVertical.center,
-              style: TextStyle(
-                color: isDayMode ? const Color(0xFF1A120D) : Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-              decoration: InputDecoration(
-                isCollapsed: true,
-                contentPadding: EdgeInsets.zero,
-                border: InputBorder.none,
-                hintText: '问问行智 Agent...',
-                hintStyle: TextStyle(
-                  color: isDayMode ? const Color(0x991A120D) : AppColors.soft,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+          if (hasImage) ...[
+            Row(
+              children: [
+                const Icon(Icons.image_rounded, color: AppColors.orange, size: 15),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    selectedImageName!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isDayMode ? const Color(0xCC1A120D) : AppColors.soft,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: enabled ? onClearImage : null,
+                  child: Icon(
+                    Icons.close_rounded,
+                    color: isDayMode ? const Color(0x991A120D) : AppColors.soft,
+                    size: 16,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+          ],
+          Row(
+            children: [
+              GestureDetector(
+                onTap: enabled ? onPickImage : null,
+                child: SizedBox(
+                  width: 28,
+                  height: 30,
+                  child: Icon(
+                    Icons.add_photo_alternate_rounded,
+                    color: isDayMode ? const Color(0xFF8A4A00) : AppColors.green,
+                    size: 20,
+                  ),
                 ),
               ),
-            ),
-          ),
-          GestureDetector(
-            onTap: enabled ? onSend : null,
-            child: Container(
-              width: 30,
-              height: 30,
-              decoration: const BoxDecoration(
-                color: AppColors.orange,
-                shape: BoxShape.circle,
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  enabled: enabled,
+                  maxLines: 1,
+                  onSubmitted: (_) => onSend(),
+                  cursorColor: AppColors.orange,
+                  textAlignVertical: TextAlignVertical.center,
+                  style: TextStyle(
+                    color: isDayMode ? const Color(0xFF1A120D) : Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: InputDecoration(
+                    isCollapsed: true,
+                    contentPadding: EdgeInsets.zero,
+                    border: InputBorder.none,
+                    hintText: hasImage ? '补充图片说明...' : '问问行智 Agent...',
+                    hintStyle: TextStyle(
+                      color: isDayMode ? const Color(0x991A120D) : AppColors.soft,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               ),
-              child: Icon(
-                enabled ? Icons.arrow_upward_rounded : Icons.hourglass_top_rounded,
-                color: Colors.white,
-                size: 18,
+              GestureDetector(
+                onTap: enabled ? onSend : null,
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: const BoxDecoration(
+                    color: AppColors.orange,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    enabled ? Icons.arrow_upward_rounded : Icons.hourglass_top_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ],
       ),
@@ -1826,13 +1998,19 @@ class ProfilePage extends StatelessWidget {
   const ProfilePage({
     required this.isDayMode,
     required this.isLoggedIn,
-    required this.onLoginToggle,
+    required this.nickname,
+    required this.phone,
+    required this.onAuthSuccess,
+    required this.onLogout,
     super.key,
   });
 
   final bool isDayMode;
   final bool isLoggedIn;
-  final VoidCallback onLoginToggle;
+  final String nickname;
+  final String phone;
+  final ValueChanged<AuthSession> onAuthSuccess;
+  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -1842,8 +2020,8 @@ class ProfilePage extends StatelessWidget {
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 260),
-            child: _LoginPanel(isDayMode: isDayMode, onLogin: onLoginToggle),
+            constraints: const BoxConstraints(maxWidth: 286),
+            child: _LoginPanel(isDayMode: isDayMode, onAuthSuccess: onAuthSuccess),
           ),
         ),
       );
@@ -1857,7 +2035,12 @@ class ProfilePage extends StatelessWidget {
         final content = Column(
           mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
             children: [
-              _SignedInProfile(isDayMode: isDayMode, expanded: !compact),
+              _SignedInProfile(
+                isDayMode: isDayMode,
+                expanded: !compact,
+                nickname: nickname,
+                phone: phone,
+              ),
               SizedBox(height: gap),
               _ProfileSection(
                 isDayMode: isDayMode,
@@ -1898,7 +2081,7 @@ class ProfilePage extends StatelessWidget {
                 ],
               ),
               if (compact) const SizedBox(height: 12) else const Spacer(),
-              LogoutButton(onPressed: onLoginToggle, expanded: !compact),
+              LogoutButton(onPressed: onLogout, expanded: !compact),
             ],
         );
 
@@ -1954,48 +2137,180 @@ class LogoutButton extends StatelessWidget {
   }
 }
 
-class _LoginPanel extends StatelessWidget {
-  const _LoginPanel({required this.isDayMode, required this.onLogin});
+class _LoginPanel extends StatefulWidget {
+  const _LoginPanel({required this.isDayMode, required this.onAuthSuccess});
 
   final bool isDayMode;
-  final VoidCallback onLogin;
+  final ValueChanged<AuthSession> onAuthSuccess;
+
+  @override
+  State<_LoginPanel> createState() => _LoginPanelState();
+}
+
+class _LoginPanelState extends State<_LoginPanel> {
+  final TextEditingController _usernameController = TextEditingController(text: 'user001');
+  final TextEditingController _passwordController = TextEditingController(text: '123456');
+  final TextEditingController _nicknameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  bool _isRegister = false;
+  bool _isSubmitting = false;
+  String _message = '';
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    _nicknameController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text.trim();
+    final nickname = _nicknameController.text.trim();
+    final phone = _phoneController.text.trim();
+
+    if (username.isEmpty || password.isEmpty) {
+      setState(() => _message = '请输入用户名和密码');
+      return;
+    }
+    if (_isRegister && (nickname.isEmpty || phone.isEmpty)) {
+      setState(() => _message = '请输入昵称和手机号');
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _message = '';
+    });
+
+    try {
+      final api = const BackendApiService();
+      final session = _isRegister
+          ? await api.register(
+              username: username,
+              password: password,
+              nickname: nickname,
+              phone: phone,
+            )
+          : await api.login(username: username, password: password);
+      if (!mounted) {
+        return;
+      }
+      widget.onAuthSuccess(session);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _message = error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return GlassPanel(
       radius: 18,
-      isDayMode: isDayMode,
+      isDayMode: widget.isDayMode,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            _Avatar(size: 44, isLoggedIn: false, isDayMode: isDayMode),
-            const SizedBox(height: 6),
-            const Text(
-              '未登录',
+            _Avatar(size: 42, isLoggedIn: false, isDayMode: widget.isDayMode),
+            const SizedBox(height: 8),
+            Text(
+              _isRegister ? '注册账号' : '账号登录',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+              style: TextStyle(
+                color: widget.isDayMode ? const Color(0xFF1A120D) : Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _AuthInput(
+              controller: _usernameController,
+              hint: '用户名',
+              icon: Icons.person_rounded,
+              isDayMode: widget.isDayMode,
             ),
             const SizedBox(height: 8),
+            _AuthInput(
+              controller: _passwordController,
+              hint: '密码',
+              icon: Icons.lock_rounded,
+              obscureText: true,
+              isDayMode: widget.isDayMode,
+            ),
+            if (_isRegister) ...[
+              const SizedBox(height: 8),
+              _AuthInput(
+                controller: _nicknameController,
+                hint: '昵称',
+                icon: Icons.badge_rounded,
+                isDayMode: widget.isDayMode,
+              ),
+              const SizedBox(height: 8),
+              _AuthInput(
+                controller: _phoneController,
+                hint: '手机号',
+                icon: Icons.phone_rounded,
+                keyboardType: TextInputType.phone,
+                isDayMode: widget.isDayMode,
+              ),
+            ],
+            if (_message.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                _message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.orange, fontSize: 11, fontWeight: FontWeight.w800),
+              ),
+            ],
+            const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
               height: 36,
               child: FilledButton.icon(
-                onPressed: onLogin,
-                icon: const Icon(Icons.login_rounded),
-                label: const Text(
-                  '登录',
-                  style: TextStyle(
+                onPressed: _isSubmitting ? null : _submit,
+                icon: Icon(_isRegister ? Icons.person_add_rounded : Icons.login_rounded),
+                label: Text(
+                  _isSubmitting ? '请稍候' : (_isRegister ? '注册并登录' : '登录'),
+                  style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
                 style: FilledButton.styleFrom(
                   backgroundColor: AppColors.orange,
+                  disabledBackgroundColor: AppColors.orange.withOpacity(0.45),
                   foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _isSubmitting
+                  ? null
+                  : () {
+                      setState(() {
+                        _isRegister = !_isRegister;
+                        _message = '';
+                      });
+                    },
+              child: Text(
+                _isRegister ? '已有账号，去登录' : '没有账号，去注册',
+                style: TextStyle(
+                  color: widget.isDayMode ? const Color(0xFF8A4A00) : AppColors.green,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
             ),
@@ -2006,10 +2321,79 @@ class _LoginPanel extends StatelessWidget {
   }
 }
 
+class _AuthInput extends StatelessWidget {
+  const _AuthInput({
+    required this.controller,
+    required this.hint,
+    required this.icon,
+    required this.isDayMode,
+    this.obscureText = false,
+    this.keyboardType,
+  });
+
+  final TextEditingController controller;
+  final String hint;
+  final IconData icon;
+  final bool isDayMode;
+  final bool obscureText;
+  final TextInputType? keyboardType;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 38,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: isDayMode ? Colors.white.withOpacity(0.66) : Colors.black.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDayMode ? const Color(0x66D9A966) : Colors.white.withOpacity(0.1),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: isDayMode ? const Color(0xFF8A4A00) : AppColors.green, size: 17),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              obscureText: obscureText,
+              keyboardType: keyboardType,
+              cursorColor: AppColors.orange,
+              style: TextStyle(
+                color: isDayMode ? const Color(0xFF1A120D) : Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+              decoration: InputDecoration(
+                isCollapsed: true,
+                border: InputBorder.none,
+                hintText: hint,
+                hintStyle: TextStyle(
+                  color: isDayMode ? const Color(0x991A120D) : AppColors.soft,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SignedInProfile extends StatelessWidget {
-  const _SignedInProfile({required this.isDayMode, this.expanded = false});
+  const _SignedInProfile({
+    required this.isDayMode,
+    required this.nickname,
+    required this.phone,
+    this.expanded = false,
+  });
 
   final bool isDayMode;
+  final String nickname;
+  final String phone;
   final bool expanded;
 
   @override
@@ -2032,7 +2416,7 @@ class _SignedInProfile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '山野行者',
+                        nickname,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -2043,7 +2427,7 @@ class _SignedInProfile extends StatelessWidget {
                       ),
                       SizedBox(height: expanded ? 7 : 5),
                       Text(
-                        '138****8621',
+                        phone,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(

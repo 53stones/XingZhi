@@ -1,0 +1,24 @@
+spring:
+  application:
+   name: outdoor
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/outdoor_help?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false
+    username: root
+    password: xxx
+server:
+  port: 8080
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+agent:
+  dify:
+    enabled: true
+    api-url: https://api.dify.ai/v1/chat-messages
+    file-upload-url: https://api.dify.ai/v1/files/upload
+    api-key: xxx
+    user-prefix: xingzhi-user-

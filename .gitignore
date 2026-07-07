@@ -1,0 +1,98 @@
+# =========================
+# System files
+# =========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================
+# IDE files
+# =========================
+.idea/
+.vscode/
+*.iml
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+
+# =========================
+# Environment / secrets
+# =========================
+.env
+.env.*
+application-local.yml
+application-local.properties
+application-dev.yml
+application-dev.properties
+application.yml
+
+# application.properties
+
+# =========================
+# Java / Spring Boot
+# =========================
+target/
+build/
+out/
+*.class
+
+# Maven wrapper 可保留，不建议忽略
+# mvnw
+# mvnw.cmd
+# .mvn/
+
+# =========================
+# Gradle
+# =========================
+.gradle/
+.gradle-cache/
+
+# =========================
+# Flutter / Dart
+# =========================
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Flutter generated
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+android/local.properties
+
+# =========================
+# Android
+# =========================
+*.apk
+*.aab
+*.jks
+*.keystore
+key.properties
+
+# =========================
+# iOS / macOS
+# =========================
+Pods/
+ios/Pods/
+macos/Pods/
+*.xcworkspace
+*.xcuserstate
+DerivedData/
+
+# =========================
+# Web build
+# =========================
+web/.dart_tool/
+
+# =========================
+# Temporary files
+# =========================
+*.tmp
+*.temp
+*.bak
